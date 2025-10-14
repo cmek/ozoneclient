@@ -1,0 +1,16 @@
+[project]
+name = "ozoneclient"
+version = "0.1.0"
+description = "Ozone API client"
+readme = "README.md"
+authors = [
+    { name = "Szymon Roczniak", email = "simon@dischaos.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.32.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
