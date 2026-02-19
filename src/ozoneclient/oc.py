@@ -270,6 +270,14 @@ class OzoneClient(object):
         """
         activates the service order
 
+        For cloud service activations partyb is the customer side, so
+        partyb_physical_so is the service order representing the customer
+        physical port and partyb_vlanid is the vlan on the customer side. For
+        that reason the refguid needs to be extracted from the current service
+        order rather than the partyb_physical_so, because the current service
+        order is the one representing the customer side of the circuit.
+
+
         so - service order being activated
         partyb_physical_so - partyb physical SO
         partya_vlanid - vlanID on A side
@@ -284,11 +292,9 @@ class OzoneClient(object):
                 f"contact identifier not found for username {accepted_by_username}"
             )
 
-        partyb_account_guid = self.get_service_order_account_guid(partyb_physical_so)
+        partyb_account_guid = self.get_service_order_account_guid(so)
         if partyb_account_guid is None:
-            raise OzoneClientError(
-                f"account ID not found for service order {partyb_physical_so}"
-            )
+            raise OzoneClientError(f"account ID not found for service order {so}")
 
         data = {
             "ActivatedDateTime": int(time()),
