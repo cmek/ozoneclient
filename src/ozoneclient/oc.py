@@ -259,6 +259,35 @@ class OzoneClient(object):
         so = self.get_service_order(soname)
         return so.get("Account", {}).get("RefGUID", None)
 
+    def activate_aws_service_order(
+        self,
+        so,
+        vlanid,
+        aws_dxcon_id,
+        aws_account_id,
+    ):
+        """
+        activates AWS service order
+
+        so - service order being activated
+        vlanid - vlanID on A side
+        aws_dxcon_id - dxcon id
+        aws_account_id (AWS ID of the owner account)
+        """
+
+        data = {
+            "ActivatedDateTime": int(time()),
+            "PartyA_VlanID": vlanid,
+            "AccountID": aws_account_id,
+            "AwsDxConID": aws_dxcon_id,
+        }
+
+        logger.info(f"activating AWS service order {so} with {data}")
+        r = self._patch(
+            f"rest/acxservice/v1/ServiceOrder/ActivateBilling/AWS/{so}", data
+        )
+        return r.json()
+
     def activate_service_order(
         self,
         so,
