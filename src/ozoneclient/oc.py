@@ -20,7 +20,14 @@ class OzoneClientError(Exception):
 class OzoneClient(object):
     # defaults to DEV environment
     def __init__(
-        self, username, password, app_id, uri, app_name="ACX", timeout_seconds=15
+        self,
+        username,
+        password,
+        app_id,
+        uri,
+        app_name="ACX",
+        timeout_seconds=15,
+        scheme="http",
     ):
         self.token = None
         # instance-level cache for the big list endpoints, keyed by name.
@@ -35,16 +42,22 @@ class OzoneClient(object):
             status_forcelist=RETRIES_STATUS_FORCELIST,
             allowed_methods={"GET"},
         )
-        self.s.mount("http://", HTTPAdapter(max_retries=retries))
+        adapter = HTTPAdapter(max_retries=retries)
+        self.s.mount("http://", adapter)
+        self.s.mount("https://", adapter)
 
         self.username = username
         self.password = password
         self.app_id = app_id
         self.app_name = app_name
         self.uri = uri
+        self.scheme = scheme
 
         self.timeout_seconds = timeout_seconds
         self._auth()
+
+    def _url(self, path):
+        return f"{self.scheme}://{self.uri}/{path}"
 
     def invalidate_cache(self, *keys):
         """
@@ -75,11 +88,13 @@ class OzoneClient(object):
 
     def _auth(self):
         if self.is_authenticated:
-            logging.info("we're already authenticated...")
+            logger.info("we're already authenticated...")
             return
 
-        url = f"http://{self.uri}/rest/teracoczauthservice/v1/Authenticate"
-        logging.info(f"trying to authenticate with ozone on {url}")
+        url = self._url("rest/teracoczauthservice/v1/Authenticate")
+        logger.info(f"trying to authenticate with ozone on {url}")
+        # the bootstrap auth call is issued without the session so it never
+        # carries a stale Authorization header from a previous (expired) token
         r = requests.post(
             url,
             data=json.dumps(
@@ -97,7 +112,7 @@ class OzoneClient(object):
         )
 
         r.raise_for_status()
-        logging.info("authenticated successfully...")
+        logger.info("authenticated successfully...")
         self.token = r.json()
         self.s.headers.update(
             {
@@ -108,31 +123,31 @@ class OzoneClient(object):
 
     def _get(self, path):
         self._auth()
-        url = f"http://{self.uri}/{path}"
-        logging.info(f"sending authenticated GET request to: {url}")
+        url = self._url(path)
+        logger.info(f"sending authenticated GET request to: {url}")
         r = self.s.get(url, timeout=self.timeout_seconds)
         r.raise_for_status()
         return r
 
     def _post(self, path, data):
         self._auth()
-        url = f"http://{self.uri}/{path}"
-        logging.info(f"sending authenticated POST request to: {url}")
+        url = self._url(path)
+        logger.info(f"sending authenticated POST request to: {url}")
         r = self.s.post(url, data=json.dumps(data), timeout=self.timeout_seconds)
         r.raise_for_status()
         return r
 
     def _patch(self, path, data):
         self._auth()
-        url = f"http://{self.uri}/{path}"
-        logging.info(f"sending authenticated PATCH request to: {url}")
+        url = self._url(path)
+        logger.info(f"sending authenticated PATCH request to: {url}")
         r = self.s.patch(url, data=json.dumps(data), timeout=self.timeout_seconds)
-        logging.debug(f"PATCH {url} responded with: {r.text}")
+        logger.debug(f"PATCH {url} responded with: {r.text}")
         r.raise_for_status()
         return r
 
     def verify_user(self, username, password):
-        logging.info(f"verifying user {username}")
+        logger.info(f"verifying user {username}")
 
         try:
             self._post(
@@ -140,12 +155,12 @@ class OzoneClient(object):
                 {"Username": username, "Password": password},
             )
         except HTTPError as e:
-            logging.info(
+            logger.info(
                 f"failed to authenticate user {username}, return code: {e.response.status_code}, error: {e}"
             )
             return False
         except Exception as e:
-            logging.warning(
+            logger.warning(
                 f"non standard exception detected while handling verification for user {username}: {e}"
             )
             return False
@@ -158,30 +173,26 @@ class OzoneClient(object):
         fresh pull and update the cache.
         """
         if refresh or "contacts" not in self._cache:
-            logging.info("getting all contacts")
+            logger.info("getting all contacts")
             self._cache["contacts"] = self._get("rest/acxservice/v1/Contact").json()
         return self._cache["contacts"]
 
     def get_contact(self, uid):
-        logging.info(f"getting contact info for {uid}")
+        logger.info(f"getting contact info for {uid}")
         r = self._get(f"rest/acxservice/v1/Contact/{uid}")
         return r.json()
 
     def get_contact_by_username(self, username):
-        logging.info(f"getting contact info for {username}")
-        contacts = self.get_contacts()
-        # lets map all contacts into (full_contact, just_username)
-        r = list(
-            filter(
-                lambda x: x[1] == username,
-                map(lambda x: (x, x.get("Account", {}).get("Username"), ""), contacts),
-            )
+        logger.info(f"getting contact info for {username}")
+        # return the first contact whose account username matches, or None
+        return next(
+            (
+                contact
+                for contact in self.get_contacts()
+                if contact.get("Account", {}).get("Username") == username
+            ),
+            None,
         )
-        if len(r) == 0:
-            return None
-        # return the first instance remembering that it's a tuple where the first
-        # element is the contact
-        return r[0][0]
 
     def get_contact_identifier_by_username(self, username):
         """
@@ -205,7 +216,7 @@ class OzoneClient(object):
         """
         extracts contact info by client guid
         """
-        logging.info(f"getting contacts for client identified by {guid}")
+        logger.info(f"getting contacts for client identified by {guid}")
         r = self._get(f"rest/acxservice/v1/Contact/byClient/{guid}")
         return r.json()
 
@@ -215,12 +226,12 @@ class OzoneClient(object):
         fresh pull and update the cache.
         """
         if refresh or "clients" not in self._cache:
-            logging.info("getting all clients")
+            logger.info("getting all clients")
             self._cache["clients"] = self._get("rest/acxservice/v1/Client").json()
         return self._cache["clients"]
 
     def get_client(self, guid):
-        logging.info(f"getting client by refguid {guid}")
+        logger.info(f"getting client by refguid {guid}")
         r = self._get(f"rest/acxservice/v1/Client/{guid}")
         return r.json()
 
@@ -230,7 +241,7 @@ class OzoneClient(object):
         force a fresh pull and update the cache.
         """
         if refresh or "service_orders" not in self._cache:
-            logging.info("getting all service orders...")
+            logger.info("getting all service orders...")
             self._cache["service_orders"] = self._get(
                 "rest/acxservice/v1/ServiceOrder"
             ).json()
@@ -240,7 +251,7 @@ class OzoneClient(object):
         """
         return service order by id (ServiceOrderId)
         """
-        logging.info(f"getting service order: {so}")
+        logger.info(f"getting service order: {so}")
         r = self._get(f"rest/acxservice/v1/ServiceOrder/{so}")
         return r.json()
 
