@@ -93,6 +93,7 @@ class OzoneClient(object):
         )
 
     def _get(self, path):
+        self._auth()
         url = f"http://{self.uri}/{path}"
         logging.info(f"sending authenticated GET request to: {url}")
         r = self.s.get(url, timeout=self.timeout_seconds)
@@ -100,6 +101,7 @@ class OzoneClient(object):
         return r
 
     def _post(self, path, data):
+        self._auth()
         url = f"http://{self.uri}/{path}"
         logging.info(f"sending authenticated POST request to: {url}")
         r = self.s.post(url, data=json.dumps(data), timeout=self.timeout_seconds)
@@ -107,6 +109,7 @@ class OzoneClient(object):
         return r
 
     def _patch(self, path, data):
+        self._auth()
         url = f"http://{self.uri}/{path}"
         logging.info(f"sending authenticated PATCH request to: {url}")
         r = self.s.patch(url, data=json.dumps(data), timeout=self.timeout_seconds)
