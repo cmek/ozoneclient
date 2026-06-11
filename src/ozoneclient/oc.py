@@ -300,6 +300,34 @@ class OzoneClient(object):
         so = self.get_service_order(soname)
         return so.get("Account", {}).get("RefGUID", None)
 
+    def activate_azure_service_order(
+        self,
+        so,
+        vlanid,
+        service_key,
+    ):
+        """
+        activates Azure ExpressRoute service order
+
+        so - service order being activated
+        vlanid - vlanID on A side
+        service_key - service key provided by Azure, needed for ExpressRoute provisioning
+        """
+
+        data = {
+            "ActivatedDateTime": int(time()),
+            "PartyA_VlanID": vlanid,
+            "ServiceKey": service_key,
+        }
+
+        logger.info(f"activating Azure ExpressRoute service order {so} with {data}")
+        r = self._patch(
+            f"rest/acxservice/v1/ServiceOrder/ActivateBilling/MSXR/{so}", data
+        )
+        # status changed, cached list is now stale
+        self.invalidate_cache("service_orders")
+        return r.json()
+
     def activate_aws_service_order(
         self,
         so,
