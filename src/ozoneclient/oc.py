@@ -5,7 +5,6 @@ from requests.adapters import HTTPAdapter
 from requests.exceptions import HTTPError
 import requests
 from time import time
-from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +23,9 @@ class OzoneClient(object):
         self, username, password, app_id, uri, app_name="ACX", timeout_seconds=15
     ):
         self.token = None
+        # instance-level cache for the big list endpoints, keyed by name.
+        # populated lazily and reused until an explicit refresh is requested.
+        self._cache = {}
         # requests session parameter
         self.s = requests.Session()
         # retries class
@@ -43,6 +45,18 @@ class OzoneClient(object):
 
         self.timeout_seconds = timeout_seconds
         self._auth()
+
+    def invalidate_cache(self, *keys):
+        """
+        drops cached list responses. with no args clears everything; otherwise
+        clears only the named keys (e.g. "service_orders", "clients",
+        "contacts"). called internally after writes that make a list stale.
+        """
+        if not keys:
+            self._cache.clear()
+            return
+        for key in keys:
+            self._cache.pop(key, None)
 
     @property
     def is_authenticated(self):
@@ -113,7 +127,7 @@ class OzoneClient(object):
         url = f"http://{self.uri}/{path}"
         logging.info(f"sending authenticated PATCH request to: {url}")
         r = self.s.patch(url, data=json.dumps(data), timeout=self.timeout_seconds)
-        print(r.text)
+        logging.debug(f"PATCH {url} responded with: {r.text}")
         r.raise_for_status()
         return r
 
@@ -138,11 +152,15 @@ class OzoneClient(object):
 
         return True
 
-    @lru_cache(maxsize=None)
-    def get_contacts(self):
-        logging.info("getting all contacts")
-        r = self._get("rest/acxservice/v1/Contact")
-        return r.json()
+    def get_contacts(self, refresh=False):
+        """
+        returns all contacts. cached by default; pass refresh=True to force a
+        fresh pull and update the cache.
+        """
+        if refresh or "contacts" not in self._cache:
+            logging.info("getting all contacts")
+            self._cache["contacts"] = self._get("rest/acxservice/v1/Contact").json()
+        return self._cache["contacts"]
 
     def get_contact(self, uid):
         logging.info(f"getting contact info for {uid}")
@@ -191,25 +209,32 @@ class OzoneClient(object):
         r = self._get(f"rest/acxservice/v1/Contact/byClient/{guid}")
         return r.json()
 
-    @lru_cache(maxsize=None)
-    def get_clients(self):
+    def get_clients(self, refresh=False):
         """
-        cached
+        returns all clients. cached by default; pass refresh=True to force a
+        fresh pull and update the cache.
         """
-        logging.info("getting all clients")
-        r = self._get("rest/acxservice/v1/Client")
-        return r.json()
+        if refresh or "clients" not in self._cache:
+            logging.info("getting all clients")
+            self._cache["clients"] = self._get("rest/acxservice/v1/Client").json()
+        return self._cache["clients"]
 
     def get_client(self, guid):
         logging.info(f"getting client by refguid {guid}")
         r = self._get(f"rest/acxservice/v1/Client/{guid}")
         return r.json()
 
-    @lru_cache(maxsize=None)
-    def get_service_orders(self):
-        logging.info("getting all service orders...")
-        r = self._get("rest/acxservice/v1/ServiceOrder")
-        return r.json()
+    def get_service_orders(self, refresh=False):
+        """
+        returns all service orders. cached by default; pass refresh=True to
+        force a fresh pull and update the cache.
+        """
+        if refresh or "service_orders" not in self._cache:
+            logging.info("getting all service orders...")
+            self._cache["service_orders"] = self._get(
+                "rest/acxservice/v1/ServiceOrder"
+            ).json()
+        return self._cache["service_orders"]
 
     def get_service_order(self, so):
         """
@@ -253,6 +278,8 @@ class OzoneClient(object):
         }
         logger.info(f"creating new service order with {data}")
         r = self._post("rest/acxservice/v1/ServiceOrder/New/SO", data)
+        # the new SO won't be reflected in a cached list, so drop it
+        self.invalidate_cache("service_orders")
         return r.json()
 
     def get_service_order_account_guid(self, soname):
@@ -289,6 +316,8 @@ class OzoneClient(object):
         r = self._patch(
             f"rest/acxservice/v1/ServiceOrder/ActivateBilling/AWS/{so}", data
         )
+        # status changed, cached list is now stale
+        self.invalidate_cache("service_orders")
         return r.json()
 
     def activate_service_order(
@@ -341,6 +370,8 @@ class OzoneClient(object):
         r = self._patch(
             f"rest/acxservice/v1/ServiceOrder/ActivateBilling/Standard/{so}", data
         )
+        # status changed, cached list is now stale
+        self.invalidate_cache("service_orders")
         return r.json()
 
     def cancel_service_order(self, so, reason, username):
@@ -367,4 +398,6 @@ class OzoneClient(object):
         r = self._patch(
             f"rest/acxservice/v1/ServiceOrder/RequestCancellation/{so}", data
         )
+        # status changed, cached list is now stale
+        self.invalidate_cache("service_orders")
         return r.json()
