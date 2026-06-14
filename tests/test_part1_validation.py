@@ -40,12 +40,13 @@ class TestAuth:
 
     def test_p1_a3_verify_user_valid(self, client, config):
         assert (
-            client.verify_user(config["OZONE_USERNAME"], config["OZONE_PASSWORD"])
+            client.verify_user(config["OZONE_TEST_USERNAME"],
+                               config["OZONE_TEST_PASSWORD"])
             is True
         )
 
     def test_p1_a4_verify_user_bad_password(self, client, config):
-        assert client.verify_user(config["OZONE_USERNAME"], BAD_PASSWORD) is False
+        assert client.verify_user(config["OZONE_TEST_USERNAME"], BAD_PASSWORD) is False
 
     def test_p1_a5_token_expiry_reauth(self, client):
         # force the token into the expiry window
