@@ -125,25 +125,49 @@ class OzoneClient(object):
         self._auth()
         url = self._url(path)
         logger.info(f"sending authenticated GET request to: {url}")
-        r = self.s.get(url, timeout=self.timeout_seconds)
-        r.raise_for_status()
+        try:
+            r = self.s.get(url, timeout=self.timeout_seconds)
+            r.raise_for_status()
+        except requests.HTTPError as e:
+            logger.error(
+                f"GET {url} failed with status {e.response.status_code}: {e.response.json()}"
+            )
+            raise OzoneClientError(
+                f"GET request failed: {e.response.status_code} - {e.response.json()}"
+            ) from e
         return r
 
     def _post(self, path, data):
         self._auth()
         url = self._url(path)
         logger.info(f"sending authenticated POST request to: {url}")
-        r = self.s.post(url, data=json.dumps(data), timeout=self.timeout_seconds)
-        r.raise_for_status()
+        try:
+            r = self.s.post(url, data=json.dumps(data), timeout=self.timeout_seconds)
+            r.raise_for_status()
+        except requests.HTTPError as e:
+            logger.error(
+                f"POST {url} failed with status {e.response.status_code}: {e.response.json()}"
+            )
+            raise OzoneClientError(
+                f"POST request failed: {e.response.status_code} - {e.response.json()}"
+            ) from e
         return r
 
     def _patch(self, path, data):
         self._auth()
         url = self._url(path)
         logger.info(f"sending authenticated PATCH request to: {url}")
-        r = self.s.patch(url, data=json.dumps(data), timeout=self.timeout_seconds)
-        logger.debug(f"PATCH {url} responded with: {r.text}")
-        r.raise_for_status()
+        try:
+            r = self.s.patch(url, data=json.dumps(data), timeout=self.timeout_seconds)
+            logger.debug(f"PATCH {url} responded with: {r.text}")
+            r.raise_for_status()
+        except requests.HTTPError as e:
+            logger.error(
+                f"PATCH {url} failed with status {e.response.status_code}: {e.response.json()}"
+            )
+            raise OzoneClientError(
+                f"PATCH request failed: {e.response.status_code} - {e.response.json()}"
+            ) from e
         return r
 
     def verify_user(self, username, password):
