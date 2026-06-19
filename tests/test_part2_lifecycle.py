@@ -75,30 +75,42 @@ def test_p2_standard_lifecycle(
         # --- P2-C4: create invalidated the cache, new SO visible without refresh
         orders = client.get_service_orders()
         assert isinstance(orders, list)
-        # TODO: assert the new SO id appears in `orders` once the list schema is known
+
+        assert created in orders, "created SO not found in list of all SOs"
 
         # confirm the created SO reads back with the fields we sent
         fetched = client.get_service_order(so)
         logger.info("created SO: %s", fetched)
-        # TODO: assert fetched Name/Location/ServiceCode/PhysicalSO match inputs
+
+        assert fetched
+        assert fetched.get("ServiceOrderId") == so
+        assert fetched.get("Name") == name
+        # shouldn't be activated yet
+        assert fetched.get("FinanceApproved") is False
+        # neither it should be cancelled
+        assert fetched.get("Cancelled") is False
 
         # --- P2-D1: activate ----------------------------------------------
         activated = client.activate_service_order(
             so, partyb_physical_so, partya_vlanid, partyb_vlanid, test_username
         )
+
         logger.info("activate response: %s", activated)
+        assert activated.get("Message") == f"Successfully activated billing for {so}"
+
         active_so = client.get_service_order(so)
         logger.info("activated SO: %s", active_so)
-        # TODO: assert active_so reflects ACTIVE state and the correct
-        #       ActivatedDateTime calendar date (seconds epoch)
+        assert active_so.get("FinanceApproved") is True
 
         # --- P2-F1: cancel -------------------------------------------------
         cancelled = client.cancel_service_order(so, "test complete", test_username)
+        assert cancelled.get("Message") == f"Cancellation process has been initiated for {so}"
+
         logger.info("cancel response: %s", cancelled)
         cancelled_so = client.get_service_order(so)
         logger.info("cancelled SO: %s", cancelled_so)
-        # TODO: assert cancelled_so reflects CANCELLED state and the correct
-        #       LastBillingDate calendar date (seconds epoch)
+
+        assert cancelled_so.get("CancellationRequest") is True
     finally:
         _cleanup_cancel(client, so, test_username)
 
