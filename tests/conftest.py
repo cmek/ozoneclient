@@ -41,22 +41,7 @@ def mutating_enabled():
 
 
 def so_id(created):
-    """
-    Best-effort extraction of the service-order identifier from a create response.
-
-    The exact response schema isn't pinned down yet, so we try the most likely
-    keys. If none match, the test is skipped with the raw payload logged so the
-    correct key can be wired in.
-    """
-    for key in ("ServiceOrderId", "ServiceOrder", "SOId", "Id", "Name"):
-        value = created.get(key) if isinstance(created, dict) else None
-        if value:
-            return value
-    pytest.skip(
-        f"could not find a service-order id in create response: {created!r} "
-        "— update so_id() in conftest.py with the correct key"
-    )
-
+    return created.get("ServiceOrderId")
 
 # --------------------------------------------------------------------------- #
 # Connection / client
