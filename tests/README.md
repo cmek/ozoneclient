@@ -43,8 +43,9 @@ uv sync --group dev      # installs pytest
 | `OZONE_PHYSICAL_SO` | create |
 | `OZONE_LOCATION` | create (`CT1` / `CT2` / `JB1`) |
 | `OZONE_SERVICE_CODE` | create (e.g. `VAX004`) |
-| `OZONE_PARTYB_PHYSICAL_SO` | standard activation |
+| `OZONE_PARTYB_PHYSICAL_SO` | standard + member-to-member activation |
 | `OZONE_PARTYA_VLANID` / `OZONE_PARTYB_VLANID` | standard activation |
+| `OZONE_PARTYB_ACCOUNT_GUID` | member-to-member activation (Party B's account RefGUID, passed explicitly) |
 | `OZONE_AWS_VLANID` / `OZONE_AWS_DXCON_ID` / `OZONE_AWS_ACCOUNT_ID` | AWS activation |
 | `OZONE_AZURE_VLANID` / `OZONE_AZURE_SERVICE_KEY` | Azure ExpressRoute activation |
 

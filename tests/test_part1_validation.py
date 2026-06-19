@@ -128,3 +128,93 @@ class TestGuardRails:
         with pytest.raises(OzoneClientError):
             client.cancel_service_order("SO-DUMMY", "guard-rail test", UNKNOWN_USERNAME)
         assert no_write_guard == []  # no PATCH was issued
+
+
+# --------------------------------------------------------------------------- #
+# P1-H. Member-to-member activation guid resolution
+#
+# These exercise the branch logic of activate_service_order's partyb_account_guid
+# argument without creating anything: the contact lookup and the PATCH itself are
+# stubbed, so we assert purely on which guid ends up in the request body and
+# whether the SO-derivation path is taken. (The live activation is covered by the
+# Part 2 lifecycle test.)
+# --------------------------------------------------------------------------- #
+class _FakeResponse:
+    @staticmethod
+    def json():
+        return {}
+
+
+class TestMemberActivationGuid:
+    def test_p1_h1_explicit_guid_is_sent_and_skips_so_derivation(
+        self, client, monkeypatch
+    ):
+        """
+        member-to-member: the activated SO belongs to Party A, so an explicit
+        partyb_account_guid must be sent verbatim and the SO-account lookup must
+        be skipped entirely.
+        """
+        monkeypatch.setattr(
+            client, "get_contact_identifier_by_username", lambda u: "CID-FAKE"
+        )
+
+        def _must_not_derive(so):
+            raise AssertionError(
+                "get_service_order_account_guid must not be called when "
+                "partyb_account_guid is supplied"
+            )
+
+        monkeypatch.setattr(client, "get_service_order_account_guid", _must_not_derive)
+
+        captured = {}
+
+        def fake_patch(path, data):
+            captured["path"] = path
+            captured["data"] = data
+            return _FakeResponse()
+
+        monkeypatch.setattr(client, "_patch", fake_patch)
+
+        client.activate_service_order(
+            "VC-SO-PARTY-A",
+            "PARTYB-PSO",
+            0,
+            0,
+            "approver@example.com",
+            partyb_account_guid="PARTYB-GUID",
+        )
+
+        assert captured["data"]["PartyB_AccountRefGUID"] == "PARTYB-GUID"
+        assert captured["data"]["PartyB_PhysicalSO"] == "PARTYB-PSO"
+        assert captured["data"]["AcceptedBy_ContactIdentifier"] == "CID-FAKE"
+        assert "ActivateBilling/Standard/VC-SO-PARTY-A" in captured["path"]
+
+    def test_p1_h2_without_explicit_guid_derives_from_so(self, client, monkeypatch):
+        """
+        cloud behaviour is preserved: with no override the guid is derived from
+        the activated SO's account.
+        """
+        monkeypatch.setattr(
+            client, "get_contact_identifier_by_username", lambda u: "CID-FAKE"
+        )
+
+        derived_for = []
+
+        def fake_derive(so):
+            derived_for.append(so)
+            return "DERIVED-GUID"
+
+        monkeypatch.setattr(client, "get_service_order_account_guid", fake_derive)
+
+        captured = {}
+
+        def fake_patch(path, data):
+            captured["data"] = data
+            return _FakeResponse()
+
+        monkeypatch.setattr(client, "_patch", fake_patch)
+
+        client.activate_service_order("SO1", "PSO", 0, 0, "approver@example.com")
+
+        assert derived_for == ["SO1"]  # derivation path was taken
+        assert captured["data"]["PartyB_AccountRefGUID"] == "DERIVED-GUID"

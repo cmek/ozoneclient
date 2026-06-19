@@ -390,6 +390,7 @@ class OzoneClient(object):
         partya_vlanid,
         partyb_vlanid,
         accepted_by_username,
+        partyb_account_guid=None,
     ):
         """
         activates the service order
@@ -397,9 +398,15 @@ class OzoneClient(object):
         For cloud service activations partyb is the customer side, so
         partyb_physical_so is the service order representing the customer
         physical port and partyb_vlanid is the vlan on the customer side. For
-        that reason the refguid needs to be extracted from the current service
-        order rather than the partyb_physical_so, because the current service
-        order is the one representing the customer side of the circuit.
+        that reason the refguid is derived from the current service order rather
+        than the partyb_physical_so, because the current service order is the
+        one representing the customer side of the circuit.
+
+        For member-to-member activations this assumption does not hold: the
+        activated SO is the virtual-circuit SO created by Party A, so its
+        account is Party A, not Party B. In that case the caller must pass
+        partyb_account_guid explicitly (Party B's account RefGUID); when given
+        it takes precedence over the value derived from the SO.
 
 
         so - service order being activated
@@ -407,6 +414,8 @@ class OzoneClient(object):
         partya_vlanid - vlanID on A side
         partyb_vlanid - vlanDI on B side
         accepted_by_username - username sending this request
+        partyb_account_guid - Party B's account RefGUID; when omitted it is
+            derived from the activated SO (cloud behaviour)
         """
         contact_identifier = self.get_contact_identifier_by_username(
             accepted_by_username
@@ -416,7 +425,8 @@ class OzoneClient(object):
                 f"contact identifier not found for username {accepted_by_username}"
             )
 
-        partyb_account_guid = self.get_service_order_account_guid(so)
+        if partyb_account_guid is None:
+            partyb_account_guid = self.get_service_order_account_guid(so)
         if partyb_account_guid is None:
             raise OzoneClientError(f"account ID not found for service order {so}")
 

@@ -104,6 +104,61 @@ def test_p2_standard_lifecycle(
 
 
 # --------------------------------------------------------------------------- #
+# P2-M. Member-to-member lifecycle
+# --------------------------------------------------------------------------- #
+def test_p2_member_to_member_lifecycle(
+    client,
+    test_username,
+    physical_so,
+    location,
+    service_code,
+    partyb_physical_so,
+    partyb_account_guid,
+):
+    """
+    P2-M1 — member-to-member create -> activate -> cancel on a single SO.
+
+    Differs from the standard lifecycle in the activation step: the SO being
+    activated is the virtual-circuit SO created by Party A, so Party B's account
+    guid cannot be derived from it and is passed explicitly via
+    partyb_account_guid. VLANs are 0 at activation (real VLANs are added later in
+    the per-VLAN workflow).
+    """
+    name = "acx-integration-test m2m"
+
+    created = client.create_service_order(
+        physical_so, name, location, test_username, service_code
+    )
+    logger.info("m2m create response: %s", created)
+    so = so_id(created)
+    assert so
+
+    try:
+        activated = client.activate_service_order(
+            so,
+            partyb_physical_so,
+            0,
+            0,
+            test_username,
+            partyb_account_guid=partyb_account_guid,
+        )
+        logger.info("m2m activate response: %s", activated)
+        active_so = client.get_service_order(so)
+        logger.info("m2m activated SO: %s", active_so)
+        # TODO: assert active_so reflects ACTIVE state and that PartyB_AccountRefGUID
+        #       is the explicitly-supplied partyb_account_guid (Party B), not the
+        #       activated SO's own account (Party A)
+
+        cancelled = client.cancel_service_order(so, "test complete", test_username)
+        logger.info("m2m cancel response: %s", cancelled)
+        cancelled_so = client.get_service_order(so)
+        logger.info("m2m cancelled SO: %s", cancelled_so)
+        # TODO: assert cancelled_so reflects CANCELLED state
+    finally:
+        _cleanup_cancel(client, so, test_username)
+
+
+# --------------------------------------------------------------------------- #
 # P2-E. AWS activation
 # --------------------------------------------------------------------------- #
 def test_p2_e1_aws_activation(

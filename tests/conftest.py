@@ -157,6 +157,11 @@ def partyb_vlanid():
 
 
 @pytest.fixture
+def partyb_account_guid():
+    return _require("OZONE_PARTYB_ACCOUNT_GUID")
+
+
+@pytest.fixture
 def aws_vlanid():
     return _require("OZONE_AWS_VLANID")
 
