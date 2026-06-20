@@ -55,6 +55,7 @@ def test_p2_standard_lifecycle(
     partya_vlanid,
     partyb_vlanid,
     partyb_username,
+    partyb_account_guid,
 ):
     """
     P2-L1 (primary acceptance test), also covering P2-C1, P2-C4, P2-D1, P2-F1.
@@ -93,7 +94,12 @@ def test_p2_standard_lifecycle(
 
         # --- P2-D1: activate ----------------------------------------------
         activated = client.activate_service_order(
-            so, partyb_physical_so, partya_vlanid, partyb_vlanid, partyb_username
+            so,
+            partyb_physical_so,
+            partya_vlanid,
+            partyb_vlanid,
+            partyb_username,
+            partyb_account_guid=partyb_account_guid,
         )
 
         logger.info("activate response: %s", activated)
@@ -105,7 +111,10 @@ def test_p2_standard_lifecycle(
 
         # --- P2-F1: cancel -------------------------------------------------
         cancelled = client.cancel_service_order(so, "test complete", test_username)
-        assert cancelled.get("Message") == f"Cancellation process has been initiated for {so}"
+        assert (
+            cancelled.get("Message")
+            == f"Cancellation process has been initiated for {so}"
+        )
 
         logger.info("cancel response: %s", cancelled)
         cancelled_so = client.get_service_order(so)
@@ -252,7 +261,11 @@ def test_p2_e2_aws_invalid_ids(
     client, test_username, physical_so, location, service_code, aws_vlanid
 ):
     created = client.create_service_order(
-        physical_so, "acx-integration-test aws-neg", location, test_username, service_code
+        physical_so,
+        "acx-integration-test aws-neg",
+        location,
+        test_username,
+        service_code,
     )
     so = so_id(created)
     try:
