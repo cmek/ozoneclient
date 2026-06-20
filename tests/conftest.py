@@ -11,6 +11,8 @@ See tests/README.md for the full list of variables and how to run each part.
 
 import logging
 import os
+import secrets
+import string
 
 import pytest
 
@@ -42,6 +44,30 @@ def mutating_enabled():
 
 def so_id(created):
     return created.get("ServiceOrderId")
+
+
+# AWS Direct Connect connection IDs are "dxcon-" + 8 lowercase alphanumeric
+# characters (e.g. "dxcon-fg31dyoc"). Ozone enforces uniqueness on them.
+_DXCON_ALPHABET = string.digits + string.ascii_lowercase
+_generated_dxcon_ids = set()
+
+
+def generate_aws_dxcon_id():
+    """
+    Return a unique, validly-formatted AWS DX connection ID.
+
+    Ozone rejects duplicate DX connection IDs, so rather than pinning one in the
+    config we mint a fresh ``dxcon-XXXXXXXX`` per use. Generated values are
+    tracked for the lifetime of the process so two activations in the same run
+    can never collide; the 36**8 keyspace makes cross-run collisions
+    negligible.
+    """
+    while True:
+        suffix = "".join(secrets.choice(_DXCON_ALPHABET) for _ in range(8))
+        dxcon_id = f"dxcon-{suffix}"
+        if dxcon_id not in _generated_dxcon_ids:
+            _generated_dxcon_ids.add(dxcon_id)
+            return dxcon_id
 
 # --------------------------------------------------------------------------- #
 # Connection / client
@@ -158,7 +184,10 @@ def aws_vlanid():
 
 @pytest.fixture
 def aws_dxcon_id():
-    return _require("OZONE_AWS_DXCON_ID")
+    # Generated per test by default (Ozone checks DX connection IDs for
+    # uniqueness). An explicit OZONE_AWS_DXCON_ID still overrides, e.g. to pin
+    # to a pre-provisioned connection.
+    return os.environ.get("OZONE_AWS_DXCON_ID") or generate_aws_dxcon_id()
 
 
 @pytest.fixture
