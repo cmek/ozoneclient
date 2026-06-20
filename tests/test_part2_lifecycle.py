@@ -54,6 +54,7 @@ def test_p2_standard_lifecycle(
     partyb_physical_so,
     partya_vlanid,
     partyb_vlanid,
+    partyb_username,
 ):
     """
     P2-L1 (primary acceptance test), also covering P2-C1, P2-C4, P2-D1, P2-F1.
@@ -92,7 +93,7 @@ def test_p2_standard_lifecycle(
 
         # --- P2-D1: activate ----------------------------------------------
         activated = client.activate_service_order(
-            so, partyb_physical_so, partya_vlanid, partyb_vlanid, test_username
+            so, partyb_physical_so, partya_vlanid, partyb_vlanid, partyb_username
         )
 
         logger.info("activate response: %s", activated)
@@ -126,6 +127,7 @@ def test_p2_member_to_member_lifecycle(
     service_code,
     partyb_physical_so,
     partyb_account_guid,
+    partyb_username,
 ):
     """
     P2-M1 — member-to-member create -> activate -> cancel on a single SO.
@@ -151,7 +153,7 @@ def test_p2_member_to_member_lifecycle(
             partyb_physical_so,
             0,
             0,
-            test_username,
+            partyb_username,
             partyb_account_guid=partyb_account_guid,
         )
         logger.info("m2m activate response: %s", activated)
