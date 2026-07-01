@@ -201,6 +201,16 @@ class OzoneClient(object):
             self._cache["contacts"] = self._get("rest/acxservice/v1/Contact").json()
         return self._cache["contacts"]
 
+    def get_service_line_items(self, guid, code="VAX004"):
+        """
+        returns all service line items for a given service order guid and service code.
+        
+        this endpoint is used for pricing
+        """
+        logger.info(f"getting service line items for service order {guid} and service code {code}")
+        r = self._get(f"rest/acxservice/v1/ServiceOrder/{guid}/ServiceLineItems/{code}")
+        return r.json()
+
     def get_contact(self, uid):
         logger.info(f"getting contact info for {uid}")
         r = self._get(f"rest/acxservice/v1/Contact/{uid}")
