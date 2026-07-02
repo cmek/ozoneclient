@@ -2,7 +2,6 @@ import logging
 import json
 from urllib3.util import Retry
 from requests.adapters import HTTPAdapter
-from requests.exceptions import HTTPError
 import requests
 from time import time
 
@@ -14,7 +13,10 @@ RETRIES_STATUS_FORCELIST = [502, 503, 504]
 
 
 class OzoneClientError(Exception):
-    pass
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        # HTTP status of the failed request, when the error wraps one
+        self.status_code = status_code
 
 
 class OzoneClient(object):
@@ -121,54 +123,53 @@ class OzoneClient(object):
             }
         )
 
-    def _get(self, path):
+    def _send(self, method, path, data=None):
+        """
+        sends an authenticated request, transparently refreshing the token.
+
+        the token is refreshed up-front when it is known to be expired (the
+        is_authenticated pre-check inside _auth). if the server rejects a
+        token that still looked valid locally with a 401 (e.g. it was
+        invalidated server-side before ExpiresAt), we force one re-auth and
+        retry the request once. a 401 received right after a fresh
+        authentication is NOT retried — it belongs to the request itself
+        (e.g. bad credentials passed to VerifyUser).
+        """
+        had_valid_token = self.is_authenticated
         self._auth()
         url = self._url(path)
-        logger.info(f"sending authenticated GET request to: {url}")
+        body = None if data is None else json.dumps(data)
+        logger.info(f"sending authenticated {method} request to: {url}")
+        r = self.s.request(method, url, data=body, timeout=self.timeout_seconds)
+        if r.status_code == 401 and had_valid_token:
+            logger.info(
+                "the server rejected a token that had not expired locally, "
+                "re-authenticating and retrying once..."
+            )
+            self.token = None
+            self._auth()
+            r = self.s.request(method, url, data=body, timeout=self.timeout_seconds)
+        logger.debug(f"{method} {url} responded with: {r.text}")
         try:
-            r = self.s.get(url, timeout=self.timeout_seconds)
             r.raise_for_status()
         except requests.HTTPError as e:
             logger.error(
-                f"GET {url} failed with status {e.response.status_code}: {e.response.json()}"
+                f"{method} {url} failed with status {e.response.status_code}: {e.response.text}"
             )
             raise OzoneClientError(
-                f"GET request failed: {e.response.status_code} - {e.response.json()}"
+                f"{method} request failed: {e.response.status_code} - {e.response.text}",
+                status_code=e.response.status_code,
             ) from e
         return r
+
+    def _get(self, path):
+        return self._send("GET", path)
 
     def _post(self, path, data):
-        self._auth()
-        url = self._url(path)
-        logger.info(f"sending authenticated POST request to: {url}")
-        try:
-            r = self.s.post(url, data=json.dumps(data), timeout=self.timeout_seconds)
-            r.raise_for_status()
-        except requests.HTTPError as e:
-            logger.error(
-                f"POST {url} failed with status {e.response.status_code}: {e.response.json()}"
-            )
-            raise OzoneClientError(
-                f"POST request failed: {e.response.status_code} - {e.response.json()}"
-            ) from e
-        return r
+        return self._send("POST", path, data)
 
     def _patch(self, path, data):
-        self._auth()
-        url = self._url(path)
-        logger.info(f"sending authenticated PATCH request to: {url}")
-        try:
-            r = self.s.patch(url, data=json.dumps(data), timeout=self.timeout_seconds)
-            logger.debug(f"PATCH {url} responded with: {r.text}")
-            r.raise_for_status()
-        except requests.HTTPError as e:
-            logger.error(
-                f"PATCH {url} failed with status {e.response.status_code}: {e.response.json()}"
-            )
-            raise OzoneClientError(
-                f"PATCH request failed: {e.response.status_code} - {e.response.json()}"
-            ) from e
-        return r
+        return self._send("PATCH", path, data)
 
     def verify_user(self, username, password):
         logger.info(f"verifying user {username}")
@@ -178,9 +179,9 @@ class OzoneClient(object):
                 "rest/teracoczauthservice/v1/VerifyUser",
                 {"Username": username, "Password": password},
             )
-        except HTTPError as e:
+        except OzoneClientError as e:
             logger.info(
-                f"failed to authenticate user {username}, return code: {e.response.status_code}, error: {e}"
+                f"failed to authenticate user {username}, return code: {e.status_code}, error: {e}"
             )
             return False
         except Exception as e:
